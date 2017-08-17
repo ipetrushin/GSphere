@@ -92,9 +92,11 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
     private double longitude = 0.0f;
     private double latitude = 0.0f;
     private double radius = 1.0f * second;
+    int laps = 1;
+    String teamName = "Test Team";
     private int cirlcePoints = 4;
     private float altitude  = 1;
-    private int stay = 20000;
+    public  int stay = 20000;
     private float mSpeed = 10.0f;
 
     private final double FE = 1.0/298.257223563;
@@ -102,6 +104,7 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
     private final double RE = 6378137.0;
     private double H0=450.0;
 
+    private boolean loadWaypointsFromfile = false;
     private List<Waypoint> waypointList = new ArrayList<>();
     public File logfile;
 
@@ -346,7 +349,7 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
                     String set_server_url = "http://194.176.114.21:8020/";
                     Date date = new Date();
                     long timestamp = date.getTime() / 1000;
-                    String data = String.format(Locale.US, "{\"timestamp\" : %d, \"lat\" : %f, \"lng\": %f }", timestamp, lat, lng);
+                    String data = String.format(Locale.US, "{\"timestamp\" : %d, \"lat\" : %f, \"lng\": %f, \"teamname\": \'%s\' }", timestamp, lat, lng, teamName);
                     Log.d("my", data);
 
                     URL url = null;
@@ -356,6 +359,7 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
                         e.printStackTrace();
                     }
                     HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
+                    urlConnection.setConnectTimeout(1000);
                     urlConnection.setDoOutput(true); // setting POST method
 
                     // creating stream for writing request
@@ -480,12 +484,25 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
         gMap.moveCamera(cu);
     }
 
+    public void loadWaypointsFromFile(View v) {
+        Button b = (Button) v;
+        if (loadWaypointsFromfile) {
+            loadWaypointsFromfile = false;
+            b.setText("Circle");
+
+        } else {
+            loadWaypointsFromfile = true;
+            b.setText("From file");
+        }
+    }
     private void showSettingDialog(){
         LinearLayout wayPointSettings = (LinearLayout)getLayoutInflater().inflate(R.layout.dialog_waypointsetting, null);
 
+        final TextView wpTeamName_TV = (TextView) wayPointSettings.findViewById(R.id.teamname);
         final TextView wpLatitude_TV = (TextView) wayPointSettings.findViewById(R.id.latitude);
         final TextView wpLongitude_TV = (TextView) wayPointSettings.findViewById(R.id.longitude);
         final TextView wpRadius_TV = (TextView) wayPointSettings.findViewById(R.id.radius);
+        final TextView wpLaps_TV = (TextView) wayPointSettings.findViewById(R.id.laps);
 
         final TextView wpCirlcePoints_TV = (TextView) wayPointSettings.findViewById(R.id.circlepoints);
         final TextView wpAltitude_TV = (TextView) wayPointSettings.findViewById(R.id.altitude);
@@ -529,9 +546,11 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
                 .setView(wayPointSettings)
                 .setPositiveButton("Finish",new DialogInterface.OnClickListener(){
                     public void onClick(DialogInterface dialog, int id) {
+                        teamName = wpTeamName_TV.getText().toString();
                         String latitudeStr = wpLatitude_TV.getText().toString();
                         String longitudeStr = wpLongitude_TV.getText().toString();
                         String radiusStr = wpRadius_TV.getText().toString();
+                        String lapsStr = wpLaps_TV.getText().toString();
                         String cirlcePointsStr = wpCirlcePoints_TV.getText().toString();
                         String altitudeStr  = wpAltitude_TV.getText().toString();
                         String stayStr = wpStay_TV.getText().toString();
@@ -539,8 +558,9 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
                         latitude = Float.parseFloat(nulltoFloatDefalt(latitudeStr, "" + droneLocationLat));
                         longitude = Float.parseFloat(nulltoFloatDefalt(longitudeStr, "" + droneLocationLng));
 
-//                        radius = Float.parseFloat(nulltoFloatDefalt(radiusStr, "3.0")) * second;
+                        //  radius = Float.parseFloat(nulltoFloatDefalt(radiusStr, "3.0")) * second;
                         radius = Float.parseFloat(nulltoFloatDefalt(radiusStr, "3.0"));
+                        laps = Integer.parseInt(nulltoIntegerDefalt(lapsStr, "1"));
 
                         cirlcePoints = Integer.parseInt(nulltoIntegerDefalt(cirlcePointsStr, "8"));
                         altitude = Float.parseFloat(nulltoFloatDefalt(altitudeStr, "10.0"));
@@ -636,7 +656,7 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
     }
 
 
-    private void configWayPointMission(){
+    private void configWayPointMission() {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -644,7 +664,7 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
             }
 
         });
-        if(waypointMissionBuilder != null) {
+        if (waypointMissionBuilder != null) {
             waypointList.clear();
             waypointMissionBuilder.waypointList(waypointList);
             updateDroneLocation();
@@ -657,40 +677,55 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
                 .maxFlightSpeed(mSpeed)
                 .flightPathMode(WaypointMissionFlightPathMode.NORMAL);
 
-        if(waypointMissionBuilder == null) {
+        if (waypointMissionBuilder == null) {
             setResultToToast("Cannot create WaypointBuilder");
             return;
         }
 
         Log.e(TAG, "Test function: " + WGS84.someFunction(1.0F));
+        if (loadWaypointsFromfile) {
+           File file = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),"waypoints.csv");
+            Log.d("my", file.getAbsolutePath());
+            Configuration c = new Configuration(file);
+            waypointList = c.waypoints;
+            for (Waypoint wp: waypointList) {
+                markWaypoint(new LatLng(wp.coordinate.getLatitude(), wp.coordinate.getLongitude()));
+                wp.addAction(new WaypointAction(WaypointActionType.STAY, stay));
+            }
+        }
+        else {
 
-        double x,y,z,f,R_fi0;
-        double fi0,lg0,dfi;
-        fi0=latitude*grad;
-        lg0=longitude*grad;
-        f=RE/Math.sqrt(1.0-EE*Math.sin(fi0)*Math.sin(fi0));
-        x=(f+H0)*Math.cos(fi0)*Math.cos(lg0);
-        y=(f+H0)*Math.cos(fi0)*Math.sin(lg0);
-        z=(f*(1-EE)+H0)*Math.sin(fi0);
-        R_fi0=Math.sqrt(x*x+y*y+z*z);
-        dfi=Math.atan(radius/(R_fi0+altitude));
+            double x, y, z, f, R_fi0;
+            double fi0, lg0, dfi;
+            fi0 = latitude * grad;
+            lg0 = longitude * grad;
+            f = RE / Math.sqrt(1.0 - EE * Math.sin(fi0) * Math.sin(fi0));
+            x = (f + H0) * Math.cos(fi0) * Math.cos(lg0);
+            y = (f + H0) * Math.cos(fi0) * Math.sin(lg0);
+            z = (f * (1 - EE) + H0) * Math.sin(fi0);
+            R_fi0 = Math.sqrt(x * x + y * y + z * z);
+            dfi = Math.atan(radius / (R_fi0 + altitude));
 
-        double daz= 2.0D * Math.PI/(double)cirlcePoints;
-        int i=0;
-        for(double az = 0.0D; az < 2.0D * Math.PI; az+=daz) {
-            double lat_shift = Math.asin(Math.sin(fi0)*Math.cos(dfi)+Math.cos(fi0)*Math.sin(dfi)*Math.cos(az));
-            double dlg=Math.atan2(Math.sin(az)*Math.sin(dfi),Math.cos(dfi)*Math.cos(fi0)-Math.sin(fi0)*Math.sin(dfi)*Math.cos(az));
-            double lon_shift=longitude + dlg/grad;
-            lat_shift/=grad;
-            LatLng point = new LatLng(lat_shift, lon_shift);
-            markWaypoint(point);
+            double daz = 2.0D * Math.PI / (double) cirlcePoints;
+            int i = 0;
+            // TODO
+            // add waypoint generation for several laps
 
-            Waypoint mWaypoint = new Waypoint(point.latitude, point.longitude, altitude);
-            mWaypoint.addAction(new WaypointAction(WaypointActionType.STAY, stay));
+            for (double az = 0.0D; az < 2.0D * Math.PI; az += daz) {
+                double lat_shift = Math.asin(Math.sin(fi0) * Math.cos(dfi) + Math.cos(fi0) * Math.sin(dfi) * Math.cos(az));
+                double dlg = Math.atan2(Math.sin(az) * Math.sin(dfi), Math.cos(dfi) * Math.cos(fi0) - Math.sin(fi0) * Math.sin(dfi) * Math.cos(az));
+                double lon_shift = longitude + dlg / grad;
+                lat_shift /= grad;
+                LatLng point = new LatLng(lat_shift, lon_shift);
+                markWaypoint(point);
 
-            Log.e(TAG, "Way #" + i + ": " + point.toString());
-            i++;
-            waypointList.add(mWaypoint);
+                Waypoint mWaypoint = new Waypoint(point.latitude, point.longitude, altitude);
+                mWaypoint.addAction(new WaypointAction(WaypointActionType.STAY, stay));
+
+                Log.e(TAG, "Way #" + i + ": " + point.toString());
+                i++;
+                waypointList.add(mWaypoint);
+            }
         }
         waypointMissionBuilder.waypointList(waypointList).waypointCount(waypointList.size());
 
