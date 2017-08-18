@@ -93,6 +93,7 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
     private double latitude = 0.0f;
     private double radius = 1.0f * second;
     int laps = 1;
+    boolean useNetwork = true;
     String teamName = "Test Team";
     private int cirlcePoints = 4;
     private float altitude  = 1;
@@ -349,7 +350,7 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
                     String set_server_url = "http://194.176.114.21:8020/";
                     Date date = new Date();
                     long timestamp = date.getTime() / 1000;
-                    String data = String.format(Locale.US, "{\"timestamp\" : %d, \"lat\" : %f, \"lng\": %f, \"teamname\": \'%s\' }", timestamp, lat, lng, teamName);
+                    String data = String.format(Locale.US, "{\"timestamp\" : %d, \"lat\" : %f, \"lng\": %f, \"teamname\": \"%s\" }", timestamp, lat, lng, teamName);
                     Log.d("my", data);
 
                     URL url = null;
@@ -383,11 +384,13 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
         }
         MyThread mt = new MyThread();
         mt.start();
+
         while (mt.isAlive()); // do nothing
         if (mt.output.equals("")) {
             mt.output = "No output received";
         }
         Toast.makeText(this, mt.output, Toast.LENGTH_SHORT).show();
+
 
 
     }
@@ -401,7 +404,9 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
         markerOptions.icon(BitmapDescriptorFactory.fromResource(R.drawable.aircraft));
 
         String info = String.format("%f, %f, %f\n", droneLocationLat, droneLocationLng, altitude+1.0);
-        sendGPSLocation(droneLocationLat, droneLocationLng);
+        if (useNetwork) {
+            sendGPSLocation(droneLocationLat, droneLocationLng);
+        }
         Log.d("my", logfile.getAbsolutePath());
         try {
 //            FileOutputStream outputStream = new FileOutputStream(logfile);
@@ -493,6 +498,17 @@ public class MainActivity extends FragmentActivity implements View.OnClickListen
         } else {
             loadWaypointsFromfile = true;
             b.setText("From file");
+        }
+    }
+    public void useNetwork(View v) {
+        Button b = (Button) v;
+        if (useNetwork) {
+            useNetwork = false;
+            b.setText("Net Off");
+
+        } else {
+            useNetwork = true;
+            b.setText("Net on");
         }
     }
     private void showSettingDialog(){
